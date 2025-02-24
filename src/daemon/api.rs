@@ -2,17 +2,12 @@ use axum::response::IntoResponse;
 use axum::{http::StatusCode, routing::post, Json, Router};
 use rand::Rng;
 use regex::Regex;
-use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::process::Command;
-use std::{error::Error, path::Path};
-use tokio::net::UnixListener;
 
-use containd::*;
+use crate::daemon::requests::*;
+use crate::daemon::MANAGED_RESOURCES_PREFIX;
 
-static MANAGED_RESOURCES_PREFIX: &str = "vm-";
-
-fn app() -> Router {
+pub(crate) fn root() -> Router {
     Router::new().nest("/api", api())
 }
 
@@ -71,25 +66,4 @@ async fn tap_delete(Json(req): Json<NetTapDeleteRequest>) -> impl IntoResponse {
     dbg!(out);
 
     StatusCode::ACCEPTED
-}
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
-    let path = Path::new("/run/contain.sock");
-    if path.exists() {
-        match fs::remove_file(path) {
-            Err(_) => {
-                fs::remove_dir_all(path)?;
-            }
-            _ => {}
-        }
-    }
-    let listener = UnixListener::bind(path)?;
-    fs::set_permissions(path, fs::Permissions::from_mode(0o666))?;
-
-    println!("Listening for connections at {}.", path.display());
-
-    axum::serve(listener, app()).await?;
-
-    Ok(())
 }

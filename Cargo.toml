@@ -1,15 +1,15 @@
 [package]
-name = "containd"
+name = "contain"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
 
 [[bin]]
-name = "daemon"
+name = "contain"
 
 [[bin]]
-name = "client"
+name = "containd"
 
 [dependencies]
 hyperlocal = "0.9"
@@ -24,3 +24,6 @@ rand = "0.9"
 hex = "0.4"
 pnet = "0.35"
 regex = "1"
+clap = { version = "4", features = ["derive"] }
+thiserror = "2"
+http = "1"
