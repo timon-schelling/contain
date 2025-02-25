@@ -11,12 +11,14 @@ pub struct Config {
     pub memory: memory::Memory,
     pub filesystem: filesystem::Filesystem,
     pub network: network::Network,
+    pub graphics: graphics::Graphics,
 }
 
 mod cpu;
 mod memory;
 mod filesystem;
 mod network;
+mod graphics;
 
 #[derive(Error, Debug)]
 pub enum ConfigError {
@@ -29,13 +31,7 @@ pub enum ConfigError {
 impl TryFrom<PathBuf> for Config {
     type Error = ConfigError;
     fn try_from(path: PathBuf) -> Result<Self, Self::Error> {
-        let s = match fs::read_to_string(path) {
-            Ok(s) => s,
-            Err(e) => return Err(ConfigError::Io(e)),
-        };
-        match serde_json::from_str(&s) {
-            Ok(c) => Ok(c),
-            Err(e) => Err(ConfigError::Parse(e)),
-        }
+        let s = fs::read_to_string(path)?;
+        serde_json::from_str(&s).map_err(|e| { ConfigError::Parse(e) })
     }
 }

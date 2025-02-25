@@ -8,13 +8,13 @@ use thiserror::Error;
 
 use crate::daemon::{requests::*, DEFAULT_SOCKET_PATH};
 
-async fn request_tap_device(user: String) -> Result<String, RequestError> {
+pub async fn request_tap_device(user: String) -> Result<String, RequestError> {
     let body = NetTapCreateRequest { user };
     let NetTapCreateResponse { name } = json_request("/api/net/tap", Method::POST, body).await?;
     Ok(name)
 }
 
-async fn delete_tap_device(name: String) -> Result<(), RequestError>{
+pub async fn delete_tap_device(name: String) -> Result<(), RequestError>{
     let body = NetTapDeleteRequest { name };
     json_request("/api/net/tap", Method::DELETE, body).await
 }
@@ -44,10 +44,7 @@ async fn json_request<B: Serialize, R: DeserializeOwned>(route: &str, method: Me
         .header("Content-Type", "application/json")
         .body(bytes)?;
 
-    let res: Response<Incoming> = match client.request(req).await {
-        Ok(r) => r,
-        Err(e) => return Err(e.into()),
-    };
+    let res: Response<Incoming> = client.request(req).await?;
 
     let reader = res.into_body().collect().await?.aggregate().reader();
     let json = serde_json::from_reader::<_, R>(reader)?;

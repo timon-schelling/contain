@@ -24,7 +24,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     match cli.command {
         Commands::Start { config } => {
             let config = Config::try_from(config)?;
-            run_vm(config)?;
+            run_vm(config).await?;
         },
         _ => {},
     }
