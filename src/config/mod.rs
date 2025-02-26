@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use std::{fs, io, path::PathBuf};
 
-#[derive(Default, Serialize, Deserialize, Debug)]
+#[derive(Default, Serialize, Deserialize, Clone, Debug)]
 pub struct Config {
     pub kernel_path: PathBuf,
     pub initrd_path: PathBuf,

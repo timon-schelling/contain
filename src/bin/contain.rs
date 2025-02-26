@@ -26,7 +26,6 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             let config = Config::try_from(config)?;
             run_vm(config).await?;
         },
-        _ => {},
     }
 
     Ok(())

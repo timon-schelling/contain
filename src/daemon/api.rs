@@ -29,7 +29,7 @@ async fn tap_create(Json(req): Json<NetTapCreateRequest>) -> impl IntoResponse {
         return StatusCode::BAD_REQUEST.into_response();
     }
 
-    let out = Command::new("ip")
+    match Command::new("ip")
         .args([
             "tuntap",
             "add",
@@ -42,14 +42,30 @@ async fn tap_create(Json(req): Json<NetTapCreateRequest>) -> impl IntoResponse {
             "vnet_hdr",
             "multi_queue",
         ])
-        .output();
-    dbg!(out);
-
-    let out = Command::new("ip")
+        .output()
+    {
+        Ok(out) => {
+            if !out.status.success() {
+                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            }
+        },
+        Err(_) => {
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        },
+    }
+    match Command::new("ip")
         .args(["link", "set", name.as_str(), "up"])
-        .output();
-    dbg!(out);
-    dbg!(name.clone());
+        .output()
+    {
+        Ok(out) => {
+            if !out.status.success() {
+                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            }
+        },
+        Err(_) => {
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        },
+    }
 
     (StatusCode::CREATED, Json(NetTapCreateResponse { name })).into_response()
 }
@@ -60,10 +76,19 @@ async fn tap_delete(Json(req): Json<NetTapDeleteRequest>) -> impl IntoResponse {
         return StatusCode::FORBIDDEN;
     }
 
-    let out = Command::new("ip")
+    match Command::new("ip")
         .args(["link", "delete", name.as_str()])
-        .output();
-    dbg!(out);
+        .output()
+    {
+        Ok(out) => {
+            if !out.status.success() {
+                return StatusCode::INTERNAL_SERVER_ERROR;
+            }
+        },
+        Err(_) => {
+            return StatusCode::INTERNAL_SERVER_ERROR;
+        },
+    }
 
     StatusCode::ACCEPTED
 }

@@ -16,7 +16,8 @@ pub async fn request_tap_device(user: String) -> Result<String, RequestError> {
 
 pub async fn delete_tap_device(name: String) -> Result<(), RequestError>{
     let body = NetTapDeleteRequest { name };
-    json_request("/api/net/tap", Method::DELETE, body).await
+    json_call("/api/net/tap", Method::DELETE, body).await?;
+    Ok(())
 }
 
 #[derive(Error, Debug)]
@@ -31,7 +32,7 @@ pub enum RequestError {
     ClientError(#[from] hyper_util::client::legacy::Error),
 }
 
-async fn json_request<B: Serialize, R: DeserializeOwned>(route: &str, method: Method, body: B) -> Result<R, RequestError> {
+async fn json_call<B: Serialize>(route: &str, method: Method, body: B) -> Result<Response<Incoming>, RequestError> {
     let url = Uri::new(DEFAULT_SOCKET_PATH, &route);
     let client: Client<UnixConnector, Full<Bytes>> = Client::unix();
 
@@ -44,9 +45,15 @@ async fn json_request<B: Serialize, R: DeserializeOwned>(route: &str, method: Me
         .header("Content-Type", "application/json")
         .body(bytes)?;
 
-    let res: Response<Incoming> = client.request(req).await?;
+    let res = client.request(req).await?;
+    Ok(res)
+}
+
+async fn json_request<B: Serialize, R: DeserializeOwned>(route: &str, method: Method, body: B) -> Result<R, RequestError> {
+    let res = json_call(route, method, body).await?;
 
     let reader = res.into_body().collect().await?.aggregate().reader();
+
     let json = serde_json::from_reader::<_, R>(reader)?;
     Ok(json)
 }
