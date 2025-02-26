@@ -12,13 +12,15 @@ pub struct Config {
     pub filesystem: filesystem::Filesystem,
     pub network: network::Network,
     pub graphics: graphics::Graphics,
+    pub console: console::Console,
 }
 
-mod cpu;
-mod memory;
-mod filesystem;
-mod network;
-mod graphics;
+pub mod cpu;
+pub mod memory;
+pub mod filesystem;
+pub mod network;
+pub mod graphics;
+pub mod console;
 
 #[derive(Error, Debug)]
 pub enum ConfigError {

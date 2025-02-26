@@ -1,3 +1,4 @@
+use rand::Rng;
 use regex::Regex;
 use serde_json::json;
 use std::fmt::Display;
@@ -5,7 +6,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
-use std::{env, io, thread};
+use std::{env, fs, io, thread};
 use thiserror::Error;
 use tokio::select;
 use tokio::signal::unix::{signal, SignalKind};
@@ -13,7 +14,7 @@ use tokio::sync::watch;
 use tokio::time::sleep;
 
 use crate::client::{delete_tap_device, request_tap_device, RequestError};
-use crate::config::Config;
+use crate::config::*;
 
 #[derive(Error, Debug)]
 pub enum VmError {
@@ -23,6 +24,9 @@ pub enum VmError {
     XDGRuntimeDirEnvUnavailable(env::VarError),
     #[error("cannot read environment variable WAYLAND_DISPLAY to determine wayland socket")]
     WaylandSocketEnvUnavailable(env::VarError),
+
+    #[error("xdg runtime dir unavailable")]
+    XDGRuntimeDirUnavailable(Option<io::Error>),
 
     #[error("wayland socket unavailable")]
     WaylandSocketUnavailable(Option<io::Error>),
@@ -43,6 +47,11 @@ pub enum VmError {
     FailedToKillSupportProcess(io::Error),
     #[error("failed to wait on support process")]
     FailedToWaitOnSupportProcess(io::Error),
+
+    #[error("failed to create vm dir")]
+    FailedToCreateVmDir(io::Error),
+    #[error("failed to delete vm dir")]
+    FailedToDeleteVmDir(io::Error),
 
     #[error("failed to check for support socket")]
     FailedToCheckForSupportSocket(io::Error),
@@ -78,6 +87,15 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
             .expect("sending shutdown signal should work");
     });
 
+    let runtime_dir_env =
+        env::var("XDG_RUNTIME_DIR").map_err(|e| VmError::XDGRuntimeDirEnvUnavailable(e))?;
+    let runtime_dir = PathBuf::from(runtime_dir_env);
+    runtime_dir.try_exists().map_failure(|o| VmError::XDGRuntimeDirUnavailable(o))?;
+
+    let vm_id = hex::encode(&rand::rng().random::<[u8; 16]>());
+    let vm_dir = runtime_dir.join("contain").join(vm_id);
+    fs::create_dir_all(vm_dir.clone()).map_err(|e| VmError::FailedToCreateVmDir(e))?;
+
     let tap_device_name = if config.network.assign_tap_device {
         let user = env::var("USER").map_err(|e| VmError::UserEnvUnavailable(e))?;
         Some(request_tap_device(user).await?)
@@ -97,19 +115,22 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
             .check_is_valid_identifier()
             .map_err(|e| VmError::InvalidShareTag(e))?;
 
-        share
-            .source
+        let source = fs::canonicalize(share.source).map_err(|e| VmError::InvalidShareSource(Some(e)))?;
+        source
             .try_exists()
             .map_failure(|o| VmError::InvalidShareSource(o))?;
-        let source = share.source.to_string_lossy();
+        let source = source.to_string_lossy();
 
         let socket = format!("virtio-fs-{}.sock", tag);
 
         let mut cmd = vec![
-            "virtiofsd".to_string(),
-            format!("--socket-path={}", socket),
-            format!("--tag={}", tag),
-            format!("--shared-dir={}", source),
+            format!("virtiofsd"),
+            format!("--socket-path", ),
+            format!("{}", socket),
+            format!("--tag"),
+            format!("{}", tag),
+            format!("--shared-dir"),
+            format!("{}", source),
         ];
 
         if !share.write {
@@ -123,12 +144,10 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
     let virtio_gpu_socket = if config.graphics.virtio_gpu {
         let socket = "virtio-gpu.sock";
 
-        let runtime_dir =
-            env::var("XDG_RUNTIME_DIR").map_err(|e| VmError::XDGRuntimeDirEnvUnavailable(e))?;
         let wayland_display =
             env::var("WAYLAND_DISPLAY").map_err(|e| VmError::WaylandSocketEnvUnavailable(e))?;
 
-        let wayland_socket_path = PathBuf::from(format!("{}/{}", runtime_dir, wayland_display));
+        let wayland_socket_path = runtime_dir.join(wayland_display);
         wayland_socket_path
             .try_exists()
             .map_failure(|o| VmError::WaylandSocketUnavailable(o))?;
@@ -144,9 +163,9 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
         let device_params = serde_json::to_string(&device_params_json).expect("this is valid json");
 
         let cmd = vec![
-            "crosvm".to_string(),
-            "device".to_string(),
-            "gpu".to_string(),
+            format!("crosvm"),
+            format!("device"),
+            format!("gpu"),
             format!("--socket={}", socket),
             format!("--wayland-sock={}", wayland_socket),
             format!("--params={}", device_params),
@@ -162,7 +181,7 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
 
     for cmd in support_cmds.iter() {
         support_processes.push(
-            cmd.spawn()
+            cmd.spawn(vm_dir.clone())
                 .map_err(|e| VmError::FailedToSpawnSupportProcess(e))?,
         );
     }
@@ -175,7 +194,7 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
                     break 'wait_for_support_sockets;
                 },
             };
-            if !socket
+            if !vm_dir.join(socket)
                 .try_exists()
                 .map_err(|e| VmError::FailedToCheckForSupportSocket(e))?
             {
@@ -213,11 +232,16 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
         format!("--cpus"),
         format!("boot={}", config.cpu.cores),
         format!("--watchdog"),
-        // TODO: add console options
-        // format!("--serial"),
-        // format!("tty"),
-        // format!("--console"),
-        // format!("off"),
+        format!("--console"),
+        match config.console.mode {
+            console::Mode::On => format!("tty"),
+            _ => format!("off"),
+        },
+        format!("--serial"),
+        match config.console.mode {
+            console::Mode::Serial => format!("tty"),
+            _ => format!("off"),
+        },
     ];
     if let Some(virtio_gpu_socket) = virtio_gpu_socket {
         vm_cmd.push(format!("--gpu"));
@@ -240,9 +264,10 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
     }
 
     let vm_process = shared_child::SharedChild::new(
-        vm_cmd
-            .spawn()
-            .map_err(|e| VmError::FailedToSpawnVMProcess(e))?,
+        match config.console.mode {
+            console::Mode::Off => vm_cmd.spawn(vm_dir.clone()),
+            _ => vm_cmd.spawn_piped(vm_dir.clone()),
+        }.map_err(|e| VmError::FailedToSpawnVMProcess(e))?
     )
     .map_err(|e| VmError::FailedToSpawnVMProcess(e))?;
     let vm_process_arc = Arc::new(vm_process);
@@ -278,6 +303,9 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
     if let Some(name) = tap_device_name {
         delete_tap_device(name).await?;
     }
+
+    fs::remove_dir_all(vm_dir).map_err(|e| VmError::FailedToDeleteVmDir(e))?;
+
     Ok(())
 }
 
@@ -301,17 +329,26 @@ impl<T, E, M: Fn(Option<E>) -> T> MapFailure<T, E, M> for Result<bool, E> {
 }
 
 trait Cmd {
-    fn spawn(&self) -> Result<std::process::Child, std::io::Error>;
+    fn spawn(&self, path: PathBuf) -> Result<std::process::Child, std::io::Error>;
+    fn spawn_piped(&self, path: PathBuf) -> Result<std::process::Child, std::io::Error>;
 }
 
 impl Cmd for Vec<String> {
-    fn spawn(&self) -> Result<std::process::Child, std::io::Error> {
+    fn spawn(&self, path: PathBuf) -> Result<std::process::Child, std::io::Error> {
         let mut iter = self.iter();
         Command::new(iter.next().unwrap())
             .args(iter.collect::<Vec<&String>>())
+            .current_dir(path)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
+            .spawn()
+    }
+    fn spawn_piped(&self, path: PathBuf) -> Result<std::process::Child, std::io::Error> {
+        let mut iter = self.iter();
+        Command::new(iter.next().unwrap())
+            .args(iter.collect::<Vec<&String>>())
+            .current_dir(path)
             .spawn()
     }
 }
