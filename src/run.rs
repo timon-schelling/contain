@@ -235,12 +235,12 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
         format!("--console"),
         match config.console.mode {
             console::Mode::On => format!("tty"),
-            _ => format!("off"),
+            _ => format!("null"),
         },
         format!("--serial"),
         match config.console.mode {
             console::Mode::Serial => format!("tty"),
-            _ => format!("off"),
+            _ => format!("null"),
         },
     ];
     if let Some(virtio_gpu_socket) = virtio_gpu_socket {
