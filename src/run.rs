@@ -95,7 +95,9 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
     let runtime_dir_env =
         env::var("XDG_RUNTIME_DIR").map_err(|e| VmError::XDGRuntimeDirEnvUnavailable(e))?;
     let runtime_dir = PathBuf::from(runtime_dir_env);
-    runtime_dir.try_exists().map_failure(|o| VmError::XDGRuntimeDirUnavailable(o))?;
+    runtime_dir
+        .try_exists()
+        .map_failure(|o| VmError::XDGRuntimeDirUnavailable(o))?;
 
     let vm_id = hex::encode(&rand::rng().random::<[u8; 16]>());
     let vm_dir = runtime_dir.join("contain").join(vm_id);
@@ -120,7 +122,8 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
             .check_is_valid_identifier()
             .map_err(|e| VmError::InvalidShareTag(e))?;
 
-        let source = fs::canonicalize(share.source).map_err(|e| VmError::InvalidShareSource(Some(e)))?;
+        let source =
+            fs::canonicalize(share.source).map_err(|e| VmError::InvalidShareSource(Some(e)))?;
         source
             .try_exists()
             .map_failure(|o| VmError::InvalidShareSource(o))?;
@@ -130,7 +133,7 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
 
         let mut cmd = vec![
             format!("virtiofsd"),
-            format!("--socket-path", ),
+            format!("--socket-path"),
             format!("{}", socket),
             format!("--tag"),
             format!("{}", tag),
@@ -199,7 +202,8 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
                     break 'wait_for_support_sockets;
                 },
             };
-            if !vm_dir.join(socket)
+            if !vm_dir
+                .join(socket)
                 .try_exists()
                 .map_err(|e| VmError::FailedToCheckForSupportSocket(e))?
             {
@@ -239,7 +243,7 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
         format!("--watchdog"),
         format!("--console"),
         match config.console.mode {
-            console::Mode::On => format!("tty"),
+            console::Mode::On | console::Mode::Log => format!("tty"),
             _ => format!("null"),
         },
         format!("--serial"),
@@ -265,7 +269,8 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
         vm_cmd.push(format!("--disk"));
     }
     for disk in config.filesystem.disks {
-        let path = fs::canonicalize(disk.source).map_err(|e| VmError::InvalidDiskSource(Some(e)))?;
+        let path =
+            fs::canonicalize(disk.source).map_err(|e| VmError::InvalidDiskSource(Some(e)))?;
         let path_str = path.to_string_lossy();
         let readonly = if !disk.write { "on" } else { "off" };
         let id = disk.tag;
@@ -285,8 +290,10 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
     let vm_process = shared_child::SharedChild::new(
         match config.console.mode {
             console::Mode::Off => vm_cmd.spawn(vm_dir.clone()),
-            _ => vm_cmd.spawn_piped(vm_dir.clone()),
-        }.map_err(|e| VmError::FailedToSpawnVMProcess(e))?
+            console::Mode::Log => vm_cmd.spawn_log(vm_dir.clone()),
+            console::Mode::On | console::Mode::Serial => vm_cmd.spawn_piped(vm_dir.clone()),
+        }
+        .map_err(|e| VmError::FailedToSpawnVMProcess(e))?,
     )
     .map_err(|e| VmError::FailedToSpawnVMProcess(e))?;
     let vm_process_arc = Arc::new(vm_process);
@@ -349,6 +356,7 @@ impl<T, E, M: Fn(Option<E>) -> T> MapFailure<T, E, M> for Result<bool, E> {
 
 trait Cmd {
     fn spawn(&self, path: PathBuf) -> Result<std::process::Child, std::io::Error>;
+    fn spawn_log(&self, path: PathBuf) -> Result<std::process::Child, std::io::Error>;
     fn spawn_piped(&self, path: PathBuf) -> Result<std::process::Child, std::io::Error>;
 }
 
@@ -361,6 +369,14 @@ impl Cmd for Vec<String> {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
+            .spawn()
+    }
+    fn spawn_log(&self, path: PathBuf) -> Result<std::process::Child, std::io::Error> {
+        let mut iter = self.iter();
+        Command::new(iter.next().unwrap())
+            .args(iter.collect::<Vec<&String>>())
+            .current_dir(path)
+            .stdin(Stdio::null())
             .spawn()
     }
     fn spawn_piped(&self, path: PathBuf) -> Result<std::process::Child, std::io::Error> {

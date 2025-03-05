@@ -10,6 +10,8 @@ pub struct Console {
 pub enum Mode {
     #[serde(rename = "off")]
     Off,
+    #[serde(rename = "log")]
+    Log,
     #[serde(rename = "on")]
     On,
     #[serde(rename = "serial")]
