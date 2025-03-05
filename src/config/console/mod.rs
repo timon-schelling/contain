@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Default, Serialize, Deserialize, Clone, Debug)]
+#[serde(default)]
 pub struct Console {
     pub mode: Mode,
 }

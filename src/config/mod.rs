@@ -3,6 +3,7 @@ use thiserror::Error;
 use std::{fs, io, path::PathBuf};
 
 #[derive(Default, Serialize, Deserialize, Clone, Debug)]
+#[serde(default)]
 pub struct Config {
     pub kernel_path: PathBuf,
     pub initrd_path: PathBuf,

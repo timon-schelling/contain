@@ -1,11 +1,15 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Default, Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(default)]
 pub struct Memory {
-    #[serde(default = "default_size")]
     pub size: u64,
 }
 
-fn default_size() -> u64 {
-    1024
+impl Default for Memory {
+    fn default() -> Self {
+        Self {
+            size: 1024,
+        }
+    }
 }

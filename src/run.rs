@@ -63,8 +63,13 @@ pub enum VmError {
 
     #[error("invalid share tag")]
     InvalidShareTag(IdentifierValidationError),
-    #[error("invalid share tag")]
+    #[error("invalid share source")]
     InvalidShareSource(Option<io::Error>),
+
+    #[error("invalid disk tag")]
+    InvalidDiskTag(IdentifierValidationError),
+    #[error("invalid disk tag")]
+    InvalidDiskSource(Option<io::Error>),
 }
 
 pub async fn run_vm(config: Config) -> Result<(), VmError> {
@@ -254,6 +259,18 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
         vm_cmd.push(format!(
             "socket=virtio-fs-{}.sock,tag={}",
             share.tag, share.tag
+        ));
+    }
+    if !config.filesystem.disks.is_empty() {
+        vm_cmd.push(format!("--disk"));
+    }
+    for disk in config.filesystem.disks {
+        let path = disk.source.to_string_lossy();
+        let readonly = if !disk.write { "on" } else { "off" };
+        let id = disk.tag;
+        vm_cmd.push(format!(
+            "path={},id={},readonly={}",
+            path, id, readonly,
         ));
     }
     if let Some(tap_device) = tap_device_name.clone() {
