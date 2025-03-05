@@ -265,19 +265,21 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
         vm_cmd.push(format!("--disk"));
     }
     for disk in config.filesystem.disks {
-        let path = disk.source.to_string_lossy();
+        let path = fs::canonicalize(disk.source).map_err(|e| VmError::InvalidDiskSource(Some(e)))?;
+        let path_str = path.to_string_lossy();
         let readonly = if !disk.write { "on" } else { "off" };
         let id = disk.tag;
         vm_cmd.push(format!(
-            "path={},id={},readonly={}",
-            path, id, readonly,
+            "path={},serial={},readonly={}",
+            path_str, id, readonly
         ));
     }
     if let Some(tap_device) = tap_device_name.clone() {
+        vm_cmd.push(format!("--net"));
         vm_cmd.push(format!(
-            "--net=num_queues={},tap={}",
+            "num_queues={},tap={}",
             config.cpu.cores, tap_device
-        ))
+        ));
     }
 
     let vm_process = shared_child::SharedChild::new(
