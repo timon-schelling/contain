@@ -12,6 +12,9 @@ use tokio::select;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::watch;
 use tokio::time::sleep;
+use qcow2_rs::meta::Qcow2Header;
+use qcow2_rs::error::Qcow2Error;
+use std::io::Write;
 
 use crate::client::{delete_tap_device, request_tap_device, RequestError};
 use crate::config::*;
@@ -53,8 +56,18 @@ pub enum VmError {
     #[error("failed to delete vm dir")]
     FailedToDeleteVmDir(io::Error),
 
+    #[error("failed to start disk creation process")]
+    FailedToStartDiskCreationProcess(io::Error),
+    #[error("failed to wait on disk creation process")]
+    FailedToWaitOnDiskCreationProcess(io::Error),
+
     #[error("failed to check for support socket")]
     FailedToCheckForSupportSocket(io::Error),
+
+    #[error("failed to create disk empty dir")]
+    FailedToCreateDiskEmptyDir(io::Error),
+    #[error("failed to delete disk empty dir")]
+    FailedToDeleteDiskEmptyDir(io::Error),
 
     #[error("invalid kernel path")]
     InvalidKernelPath(Option<io::Error>),
@@ -70,6 +83,9 @@ pub enum VmError {
     InvalidDiskTag(IdentifierValidationError),
     #[error("invalid disk tag")]
     InvalidDiskSource(Option<io::Error>),
+
+    #[error("failed to create disk")]
+    FailedToCreateDisk(Qcow2Error),
 }
 
 pub async fn run_vm(config: Config) -> Result<(), VmError> {
@@ -93,18 +109,18 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
     });
 
     let runtime_dir_env =
-        env::var("XDG_RUNTIME_DIR").map_err(|e| VmError::XDGRuntimeDirEnvUnavailable(e))?;
+        env::var("XDG_RUNTIME_DIR").map_err(VmError::XDGRuntimeDirEnvUnavailable)?;
     let runtime_dir = PathBuf::from(runtime_dir_env);
     runtime_dir
         .try_exists()
-        .map_failure(|o| VmError::XDGRuntimeDirUnavailable(o))?;
+        .map_failure(VmError::XDGRuntimeDirUnavailable)?;
 
     let vm_id = hex::encode(&rand::rng().random::<[u8; 16]>());
     let vm_dir = runtime_dir.join("contain").join(vm_id);
-    fs::create_dir_all(vm_dir.clone()).map_err(|e| VmError::FailedToCreateVmDir(e))?;
+    fs::create_dir_all(vm_dir.clone()).map_err(VmError::FailedToCreateVmDir)?;
 
     let tap_device_name = if config.network.assign_tap_device {
-        let user = env::var("USER").map_err(|e| VmError::UserEnvUnavailable(e))?;
+        let user = env::var("USER").map_err(VmError::UserEnvUnavailable)?;
         Some(request_tap_device(user).await?)
     } else {
         None
@@ -120,13 +136,13 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
         let tag = share
             .tag
             .check_is_valid_identifier()
-            .map_err(|e| VmError::InvalidShareTag(e))?;
+            .map_err(VmError::InvalidShareTag)?;
 
         let source =
             fs::canonicalize(share.source).map_err(|e| VmError::InvalidShareSource(Some(e)))?;
         source
             .try_exists()
-            .map_failure(|o| VmError::InvalidShareSource(o))?;
+            .map_failure(VmError::InvalidShareSource)?;
         let source = source.to_string_lossy();
 
         let socket = format!("virtio-fs-{}.sock", tag);
@@ -149,16 +165,42 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
         support_sockets.push(socket.into());
     }
 
+    for disk in config.filesystem.disks.clone() {
+        if !disk.create {
+            continue;
+        }
+        let path = disk.source;
+        if path.try_exists().map_err(|e| VmError::InvalidDiskSource(Some(e)))? {
+            continue;
+        }
+        if let Some(parrent) = path.parent() {
+            fs::create_dir_all(parrent).map_err(|e| VmError::InvalidDiskSource(Some(e)))?;
+        }
+        let mut file = std::fs::File::create(path).map_err(|e| VmError::InvalidDiskSource(Some(e)))?;
+        let size = disk.size * 1024 * 1024;
+        let cluster_bits = 16;
+        let refcount_order = 4;
+        let bs_shift = 9_u8;
+        let bs = 1 << bs_shift;
+        let (rc_t, rc_b, _) =
+            Qcow2Header::calculate_meta_params(size, cluster_bits, refcount_order, bs);
+        let clusters = 1 + rc_t.1 + rc_b.1;
+        let img_size = ((clusters as usize) << cluster_bits) + 512;
+        let mut buf = vec![0u8; img_size];
+        Qcow2Header::format_qcow2(&mut buf, size, cluster_bits, refcount_order, bs).map_err(VmError::FailedToCreateDisk)?;
+        file.write_all(&buf).map_err(|e| VmError::InvalidDiskSource(Some(e)))?;
+    }
+
     let virtio_gpu_socket = if config.graphics.virtio_gpu {
         let socket = "virtio-gpu.sock";
 
         let wayland_display =
-            env::var("WAYLAND_DISPLAY").map_err(|e| VmError::WaylandSocketEnvUnavailable(e))?;
+            env::var("WAYLAND_DISPLAY").map_err(VmError::WaylandSocketEnvUnavailable)?;
 
         let wayland_socket_path = runtime_dir.join(wayland_display);
         wayland_socket_path
             .try_exists()
-            .map_failure(|o| VmError::WaylandSocketUnavailable(o))?;
+            .map_failure(VmError::WaylandSocketUnavailable)?;
 
         let wayland_socket = wayland_socket_path.as_os_str().to_string_lossy();
 
@@ -190,7 +232,7 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
     for cmd in support_cmds.iter() {
         support_processes.push(
             cmd.spawn(vm_dir.clone())
-                .map_err(|e| VmError::FailedToSpawnSupportProcess(e))?,
+                .map_err(VmError::FailedToSpawnSupportProcess)?,
         );
     }
 
@@ -205,7 +247,7 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
             if !vm_dir
                 .join(socket)
                 .try_exists()
-                .map_err(|e| VmError::FailedToCheckForSupportSocket(e))?
+                .map_err(VmError::FailedToCheckForSupportSocket)?
             {
                 continue;
             }
@@ -216,13 +258,13 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
     config
         .kernel_path
         .try_exists()
-        .map_failure(|o| VmError::InvalidKernelPath(o))?;
+        .map_failure(VmError::InvalidKernelPath)?;
     let kernel_path = config.kernel_path.to_string_lossy();
 
     config
         .initrd_path
         .try_exists()
-        .map_failure(|o| VmError::InvalidInitRDPath(o))?;
+        .map_failure(VmError::InvalidInitRDPath)?;
     let initrd_path = config.initrd_path.to_string_lossy();
 
     let mut vm_cmd = vec![
@@ -293,9 +335,9 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
             console::Mode::Log => vm_cmd.spawn_log(vm_dir.clone()),
             console::Mode::On | console::Mode::Serial => vm_cmd.spawn_piped(vm_dir.clone()),
         }
-        .map_err(|e| VmError::FailedToSpawnVMProcess(e))?,
+        .map_err(VmError::FailedToSpawnVMProcess)?,
     )
-    .map_err(|e| VmError::FailedToSpawnVMProcess(e))?;
+    .map_err(VmError::FailedToSpawnVMProcess)?;
     let vm_process_arc = Arc::new(vm_process);
 
     let vm_process_arc_clone = vm_process_arc.clone();
@@ -308,29 +350,29 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
 
     vm_process_arc
         .kill()
-        .map_err(|e| VmError::FailedToKillVMProcess(e))?;
+        .map_err(VmError::FailedToKillVMProcess)?;
 
     vm_process_arc
         .wait()
-        .map_err(|e| VmError::FailedToWaitOnVMProcess(e))?;
+        .map_err(VmError::FailedToWaitOnVMProcess)?;
 
     for process in support_processes.iter_mut() {
         process
             .kill()
-            .map_err(|e| VmError::FailedToKillSupportProcess(e))?;
+            .map_err(VmError::FailedToKillSupportProcess)?;
     }
 
     for process in support_processes.iter_mut() {
         process
             .wait()
-            .map_err(|e| VmError::FailedToWaitOnSupportProcess(e))?;
+            .map_err(VmError::FailedToWaitOnSupportProcess)?;
     }
 
     if let Some(name) = tap_device_name {
         delete_tap_device(name).await?;
     }
 
-    fs::remove_dir_all(vm_dir).map_err(|e| VmError::FailedToDeleteVmDir(e))?;
+    fs::remove_dir_all(vm_dir).map_err(VmError::FailedToDeleteVmDir)?;
 
     Ok(())
 }

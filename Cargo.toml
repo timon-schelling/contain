@@ -28,3 +28,4 @@ hyper = { version = "1", features = ["full"] }
 hyper-util = { version = "0.1", features = ["full"] }
 hyperlocal = "0.9"
 axum = "0.8"
+qcow2-rs = "0.1"
