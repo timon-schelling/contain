@@ -14,7 +14,7 @@ use tokio::sync::watch;
 use tokio::time::sleep;
 use qcow2_rs::meta::Qcow2Header;
 use qcow2_rs::error::Qcow2Error;
-use std::io::Write;
+use std::io::{BufRead, Write};
 
 use crate::client::{delete_tap_device, request_tap_device, RequestError};
 use crate::config::*;
@@ -78,6 +78,7 @@ pub enum VmError {
     InvalidShareTag(IdentifierValidationError),
     #[error("invalid share source")]
     InvalidShareSource(Option<io::Error>),
+
 
     #[error("invalid disk tag")]
     InvalidDiskTag(IdentifierValidationError),
@@ -345,7 +346,25 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
         _ = vm_process_arc_clone.wait();
         shutdown_tx.send(true)
     });
-
+    
+    if config.console.mode == console::Mode::Log {
+        let vm_process_arc_clone = vm_process_arc.clone();
+        _ = thread::spawn(move || {
+            let stdout = vm_process_arc_clone.take_stdout().unwrap();
+            let mut reader = io::BufReader::new(stdout);
+            let mut line = Vec::new();
+            loop {
+                line.clear();
+                match reader.read_until(b'\n', &mut line) {
+                    Ok(0) | Err(_) => break,
+                    Ok(_) => (),
+                }
+                let line = String::from_utf8_lossy(&*line);
+                print!("{}", line);
+            }
+        });
+    }
+    
     _ = shutdown_rx.wait_for(|b| *b).await;
 
     vm_process_arc
@@ -418,7 +437,9 @@ impl Cmd for Vec<String> {
         Command::new(iter.next().unwrap())
             .args(iter.collect::<Vec<&String>>())
             .current_dir(path)
+            .stdout(Stdio::piped())
             .stdin(Stdio::null())
+            .stderr(Stdio::null())
             .spawn()
     }
     fn spawn_piped(&self, path: PathBuf) -> Result<std::process::Child, std::io::Error> {

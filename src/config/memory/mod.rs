@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(default)]
 pub struct Memory {
     pub size: u64,

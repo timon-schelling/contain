@@ -1,12 +1,12 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Default, Serialize, Deserialize, Clone, Debug)]
+#[derive(Default, Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(default)]
 pub struct Console {
     pub mode: Mode,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub enum Mode {
     #[serde(rename = "off")]
     Off,

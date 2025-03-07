@@ -2,14 +2,14 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Default, Serialize, Deserialize, Clone, Debug)]
+#[derive(Default, Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(default)]
 pub struct Filesystem {
     pub shares: Vec<Share>,
     pub disks: Vec<Disk>,
 }
 
-#[derive(Default, Serialize, Deserialize, Clone, Debug)]
+#[derive(Default, Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(default)]
 pub struct Share {
     pub source: PathBuf,
@@ -17,7 +17,7 @@ pub struct Share {
     pub write: bool,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(default)]
 pub struct Disk {
     pub source: PathBuf,
@@ -41,7 +41,7 @@ impl Default for Disk {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub enum Format {
     #[serde(rename = "qcow2")]
     Qcow2,
