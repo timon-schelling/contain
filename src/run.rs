@@ -156,6 +156,7 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
             format!("{}", tag),
             format!("--shared-dir"),
             format!("{}", source),
+            format!("--inode-file-handles={}", share.inode_file_handles),
         ];
 
         if !share.write {
@@ -346,7 +347,7 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
         _ = vm_process_arc_clone.wait();
         shutdown_tx.send(true)
     });
-    
+
     if config.console.mode == console::Mode::Log {
         let vm_process_arc_clone = vm_process_arc.clone();
         _ = thread::spawn(move || {
@@ -364,7 +365,7 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
             }
         });
     }
-    
+
     _ = shutdown_rx.wait_for(|b| *b).await;
 
     vm_process_arc

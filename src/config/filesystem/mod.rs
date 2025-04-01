@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{fmt::Display, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -9,12 +9,44 @@ pub struct Filesystem {
     pub disks: Vec<Disk>,
 }
 
-#[derive(Default, Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(default)]
 pub struct Share {
     pub source: PathBuf,
     pub tag: String,
     pub write: bool,
+    pub inode_file_handles: InodeFileHandles,
+}
+
+impl Default for Share {
+    fn default() -> Self {
+        Self {
+            source: PathBuf::default(),
+            tag: String::default(),
+            write: true,
+            inode_file_handles: InodeFileHandles::Never,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+pub enum InodeFileHandles {
+    #[serde(rename = "never")]
+    Never,
+    #[serde(rename = "prefer")]
+    Prefer,
+    #[serde(rename = "mandatory")]
+    Mandatory,
+}
+
+impl Display for InodeFileHandles {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Never => "never",
+            Self::Prefer => "prefer",
+            Self::Mandatory => "mandatory",
+        })
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
@@ -49,11 +81,11 @@ pub enum Format {
     Raw,
 }
 
-impl ToString for Format {
-    fn to_string(&self) -> String {
-        match self {
+impl Display for Format {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
             Self::Qcow2 => "qcow2",
             Self::Raw => "raw",
-        }.to_string()
+        })
     }
 }
