@@ -4,7 +4,7 @@ rec {
   contain-unwrapped = pkgs.rustPlatform.buildRustPackage {
     pname = "contain-unwrapped";
     version = "0.1.0";
-    src = ../.;
+    src = ../..;
     useFetchCargoVendor = true;
     cargoHash = "sha256-yXVA5f6v2EOL15RIZlGnQgtTmLUSs6p4OARUlYXaZtE=";
   };
