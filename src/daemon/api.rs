@@ -1,6 +1,6 @@
 use axum::response::IntoResponse;
 use axum::{http::StatusCode, routing::post, Json, Router};
-use rand::Rng;
+use rand::{distr::Alphanumeric, Rng};
 use regex::Regex;
 use std::process::Command;
 
@@ -20,7 +20,11 @@ fn net() -> Router {
 }
 
 async fn tap_create(Json(req): Json<NetTapCreateRequest>) -> impl IntoResponse {
-    let id = hex::encode(&rand::rng().random::<[u8; 6]>());
+    let id: String = rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(7)
+        .map(char::from)
+        .collect();
     let name = format!("{}{}", MANAGED_RESOURCES_PREFIX, id);
     let regex = Regex::new(r"^[a-zA-Z0-9\._-]+$").unwrap();
     let user = req.user;
