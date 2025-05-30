@@ -8,11 +8,17 @@ rec {
     useFetchCargoVendor = true;
     cargoHash = "sha256-yXVA5f6v2EOL15RIZlGnQgtTmLUSs6p4OARUlYXaZtE=";
   };
-  contain = (pkgs.runCommand "contain" { buildInputs = [ pkgs.makeWrapper ]; } ''
+  contain = (pkgs.runCommand "contain" {
+    buildInputs = [ pkgs.makeWrapper ];
+    meta.mainProgram = "contain";
+  } ''
     makeWrapper ${contain-unwrapped}/bin/contain $out/bin/contain \
       --set PATH ${pkgs.lib.makeBinPath ([ cloud-hypervisor-graphics virtiofsd crosvm-gpu-only ])}
   '');
-  containd = (pkgs.runCommand "containd" { buildInputs = [ pkgs.makeWrapper ]; } ''
+  containd = (pkgs.runCommand "containd" {
+    buildInputs = [ pkgs.makeWrapper ];
+    meta.mainProgram = "containd";
+  } ''
     makeWrapper ${contain-unwrapped}/bin/containd $out/bin/containd \
       --set PATH ${pkgs.lib.makeBinPath (with pkgs; [ iproute2 ])}
   '');

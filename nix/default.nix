@@ -1,4 +1,4 @@
-{ nixpkgs, ... }:
+{ nixpkgs, ... }@args:
 
 let
   forAllSystems = function:
@@ -6,6 +6,9 @@ let
       "x86_64-linux"
       "aarch64-linux"
     ] (system: function nixpkgs.legacyPackages.${system});
-in {
-  packages = forAllSystems (pkgs: import ./pkgs pkgs);
+in
+{
+  packages = forAllSystems (pkgs: import ./pkgs (args // { inherit pkgs; }));
+
+  nixosModules = import ./modules args;
 }

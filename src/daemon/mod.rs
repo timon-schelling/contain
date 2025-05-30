@@ -6,7 +6,7 @@ use tokio::net::UnixListener;
 pub mod api;
 pub mod requests;
 
-pub static MANAGED_RESOURCES_PREFIX: &str = "vm-";
+pub static MANAGED_RESOURCES_PREFIX: &str = "contain-";
 pub static DEFAULT_SOCKET_PATH: &str = "/run/contain.sock";
 
 pub async fn serve_api_on_unix_socket() -> Result<(), Box<dyn Error + Send + Sync>> {
