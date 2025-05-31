@@ -6,7 +6,7 @@ let
   defaultCfg = {
     kernel_path = "${config.system.build.kernel}/bzImage";
     initrd_path = "${config.system.build.initialRamdisk}/${config.system.boot.loader.initrdFile}";
-    cmdline = "console=hvc0 loglevel=4 reboot=t panic=-1 lsm=on root=fstab init=${config.system.build.toplevel}/init regInfo=${pkgs.closureInfo {rootPaths = [ config.system.build.toplevel ];}}/registration";
+    cmdline = "console=ttyS0 loglevel=4 reboot=t panic=-1 lsm=on root=fstab init=${config.system.build.toplevel}/init regInfo=${pkgs.closureInfo {rootPaths = [ config.system.build.toplevel ];}}/registration";
     filesystem = {
       shares = [
         {
@@ -23,7 +23,7 @@ let
       virtio_gpu = true;
     };
     console = {
-      mode = "on";
+      mode = "serial";
     };
   };
 in
@@ -62,8 +62,9 @@ in
 
     bin = lib.mkOption {
       type = lib.types.package;
-      default = pkgs.nu.writeScriptBin "contain-start" ''
-        exec ${lib.getExe self.packages.${pkgs.system}.contain} start ${cfg.out}
+      default = pkgs.writeScriptBin "contain-start" ''
+        #!${lib.getExe pkgs.bash}
+        exec ${lib.getExe self.packages.${pkgs.system}.contain} start "${cfg.out}"
       '';
     };
   };
@@ -87,6 +88,8 @@ in
           "intel_pstate"
         ];
       };
+
+      boot.loader.grub.enable = false;
 
       boot.initrd.systemd.tpm2.enable = false;
       systemd.tpm2.enable = false;
