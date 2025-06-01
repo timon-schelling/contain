@@ -24,6 +24,6 @@ rec {
   '');
 
   cloud-hypervisor-graphics = import ./cloud-hypervisor-graphics pkgs;
-  virtiofsd = pkgs.virtiofsd;
+  virtiofsd = import ./virtiofsd pkgs;
   crosvm-gpu-only = import ./crosvm-gpu-only pkgs;
 }
