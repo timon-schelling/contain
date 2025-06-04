@@ -62,8 +62,9 @@ in
 
     bin = lib.mkOption {
       type = lib.types.package;
-      default = pkgs.nu.writeScriptBin "contain-start" ''
-        exec ${lib.getExe self.packages.${pkgs.system}.contain} start ${cfg.out}
+      default = pkgs.writeScriptBin "contain-start" ''
+        #!${lib.getExe pkgs.bash}
+        exec ${lib.getExe self.packages.${pkgs.system}.contain} start "${cfg.out}"
       '';
     };
   };
@@ -88,7 +89,9 @@ in
         ];
       };
 
+      boot.initrd.systemd.enable = true;
       boot.initrd.systemd.tpm2.enable = false;
+      boot.loader.grub.enable = false;
       systemd.tpm2.enable = false;
 
       fileSystems = {

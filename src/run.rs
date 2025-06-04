@@ -1,7 +1,10 @@
+use qcow2_rs::error::Qcow2Error;
+use qcow2_rs::meta::Qcow2Header;
 use rand::Rng;
 use regex::Regex;
 use serde_json::json;
 use std::fmt::Display;
+use std::io::{BufRead, Write};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, LazyLock};
@@ -12,9 +15,6 @@ use tokio::select;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::watch;
 use tokio::time::sleep;
-use qcow2_rs::meta::Qcow2Header;
-use qcow2_rs::error::Qcow2Error;
-use std::io::{BufRead, Write};
 
 use crate::client::{delete_tap_device, request_tap_device, RequestError};
 use crate::config::*;
@@ -23,13 +23,13 @@ use crate::config::*;
 pub enum VmError {
     #[error("cannot read environment variable USER to determine current user")]
     UserEnvUnavailable(env::VarError),
-    #[error("cannot read environment variable XDG_RUNTIME_DIR to determine runtime dir")]
-    XDGRuntimeDirEnvUnavailable(env::VarError),
     #[error("cannot read environment variable WAYLAND_DISPLAY to determine wayland socket")]
     WaylandSocketEnvUnavailable(env::VarError),
 
-    #[error("xdg runtime dir unavailable")]
-    XDGRuntimeDirUnavailable(Option<io::Error>),
+    #[error("runtime dir unavailable")]
+    RuntimeDirUnavailable,
+    #[error("data dir unavailable")]
+    DataDirUnavailable,
 
     #[error("wayland socket unavailable")]
     WaylandSocketUnavailable(Option<io::Error>),
@@ -51,23 +51,16 @@ pub enum VmError {
     #[error("failed to wait on support process")]
     FailedToWaitOnSupportProcess(io::Error),
 
-    #[error("failed to create vm dir")]
-    FailedToCreateVmDir(io::Error),
-    #[error("failed to delete vm dir")]
-    FailedToDeleteVmDir(io::Error),
+    #[error("failed to create runtime dir")]
+    FailedToCreateRuntimeDir(io::Error),
+    #[error("failed to delete runtime dir")]
+    FailedToDeleteRuntimeDir(io::Error),
 
-    #[error("failed to start disk creation process")]
-    FailedToStartDiskCreationProcess(io::Error),
-    #[error("failed to wait on disk creation process")]
-    FailedToWaitOnDiskCreationProcess(io::Error),
+    #[error("failed to resolve disk location")]
+    FailedToResolveDiskLocation,
 
     #[error("failed to check for support socket")]
     FailedToCheckForSupportSocket(io::Error),
-
-    #[error("failed to create disk empty dir")]
-    FailedToCreateDiskEmptyDir(io::Error),
-    #[error("failed to delete disk empty dir")]
-    FailedToDeleteDiskEmptyDir(io::Error),
 
     #[error("invalid kernel path")]
     InvalidKernelPath(Option<io::Error>),
@@ -78,7 +71,6 @@ pub enum VmError {
     InvalidShareTag(IdentifierValidationError),
     #[error("invalid share source")]
     InvalidShareSource(Option<io::Error>),
-
 
     #[error("invalid disk tag")]
     InvalidDiskTag(IdentifierValidationError),
@@ -109,16 +101,17 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
             .expect("sending shutdown signal should work");
     });
 
-    let runtime_dir_env =
-        env::var("XDG_RUNTIME_DIR").map_err(VmError::XDGRuntimeDirEnvUnavailable)?;
-    let runtime_dir = PathBuf::from(runtime_dir_env);
-    runtime_dir
-        .try_exists()
-        .map_failure(VmError::XDGRuntimeDirUnavailable)?;
+    let runtime_dir = dirs::runtime_dir().ok_or(VmError::RuntimeDirUnavailable)?;
+
+    let contain_runtime_dir = runtime_dir.join("contain");
+
+    let contain_data_dir = dirs::data_dir()
+        .and_then(|p| Some(p.join("contain")))
+        .ok_or(VmError::DataDirUnavailable)?;
 
     let vm_id = hex::encode(&rand::rng().random::<[u8; 16]>());
-    let vm_dir = runtime_dir.join("contain").join(vm_id);
-    fs::create_dir_all(vm_dir.clone()).map_err(VmError::FailedToCreateVmDir)?;
+    let vm_dir = contain_runtime_dir.join(vm_id);
+    fs::create_dir_all(vm_dir.clone()).map_err(VmError::FailedToCreateRuntimeDir)?;
 
     let tap_device_name = if config.network.assign_tap_device {
         let user = env::var("USER").map_err(VmError::UserEnvUnavailable)?;
@@ -167,30 +160,63 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
         support_sockets.push(socket.into());
     }
 
+    let mut disks = vec![];
     for disk in config.filesystem.disks.clone() {
+        let tag = disk
+            .tag
+            .check_is_valid_identifier()
+            .map_err(VmError::InvalidShareTag)?;
+
+        let path = match (disk.source.clone(), config.name.clone()) {
+            (Some(p), _) => p,
+            (None, Some(n)) => contain_data_dir
+                .join(n)
+                .join(format!("{}.{}", tag, disk.format)),
+            _ => return Err(VmError::FailedToResolveDiskLocation),
+        };
+
+        disks.push(Disk {
+            path: path.clone(),
+            serial: tag,
+            readonly: !disk.write,
+        });
+
+        if path
+            .try_exists()
+            .map_err(|e| VmError::InvalidDiskSource(Some(e)))?
+        {
+            continue;
+        }
+
         if !disk.create {
             continue;
         }
-        let path = disk.source;
-        if path.try_exists().map_err(|e| VmError::InvalidDiskSource(Some(e)))? {
-            continue;
-        }
+
         if let Some(parrent) = path.parent() {
             fs::create_dir_all(parrent).map_err(|e| VmError::InvalidDiskSource(Some(e)))?;
         }
-        let mut file = std::fs::File::create(path).map_err(|e| VmError::InvalidDiskSource(Some(e)))?;
-        let size = disk.size * 1024 * 1024;
-        let cluster_bits = 16;
-        let refcount_order = 4;
-        let bs_shift = 9_u8;
-        let bs = 1 << bs_shift;
-        let (rc_t, rc_b, _) =
-            Qcow2Header::calculate_meta_params(size, cluster_bits, refcount_order, bs);
-        let clusters = 1 + rc_t.1 + rc_b.1;
-        let img_size = ((clusters as usize) << cluster_bits) + 512;
-        let mut buf = vec![0u8; img_size];
-        Qcow2Header::format_qcow2(&mut buf, size, cluster_bits, refcount_order, bs).map_err(VmError::FailedToCreateDisk)?;
-        file.write_all(&buf).map_err(|e| VmError::InvalidDiskSource(Some(e)))?;
+        let mut file =
+            std::fs::File::create(path.clone()).map_err(|e| VmError::InvalidDiskSource(Some(e)))?;
+
+        match disk.format {
+            filesystem::Format::Qcow2 => {
+                let size = disk.size * 1024 * 1024;
+                let cluster_bits = 16;
+                let refcount_order = 4;
+                let bs_shift = 9_u8;
+                let bs = 1 << bs_shift;
+                let (rc_t, rc_b, _) =
+                    Qcow2Header::calculate_meta_params(size, cluster_bits, refcount_order, bs);
+                let clusters = 1 + rc_t.1 + rc_b.1;
+                let img_size = ((clusters as usize) << cluster_bits) + 512;
+                let mut buf = vec![0u8; img_size];
+                Qcow2Header::format_qcow2(&mut buf, size, cluster_bits, refcount_order, bs)
+                    .map_err(VmError::FailedToCreateDisk)?;
+                file.write_all(&buf)
+                    .map_err(|e| VmError::InvalidDiskSource(Some(e)))?;
+            }
+            filesystem::Format::Raw => todo!(),
+        }
     }
 
     let virtio_gpu_socket = if config.graphics.virtio_gpu {
@@ -312,15 +338,14 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
     if !config.filesystem.disks.is_empty() {
         vm_cmd.push(format!("--disk"));
     }
-    for disk in config.filesystem.disks {
-        let path =
-            fs::canonicalize(disk.source).map_err(|e| VmError::InvalidDiskSource(Some(e)))?;
+    for disk in disks {
+        let path = fs::canonicalize(disk.path).map_err(|e| VmError::InvalidDiskSource(Some(e)))?;
         let path_str = path.to_string_lossy();
-        let readonly = if !disk.write { "on" } else { "off" };
-        let id = disk.tag;
+        let readonly = if disk.readonly { "on" } else { "off" };
+        let serial = disk.serial;
         vm_cmd.push(format!(
             "path={},serial={},readonly={}",
-            path_str, id, readonly
+            path_str, serial, readonly
         ));
     }
     if let Some(tap_device) = tap_device_name.clone() {
@@ -392,7 +417,7 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
         delete_tap_device(name).await?;
     }
 
-    fs::remove_dir_all(vm_dir).map_err(VmError::FailedToDeleteVmDir)?;
+    fs::remove_dir_all(vm_dir).map_err(VmError::FailedToDeleteRuntimeDir)?;
 
     Ok(())
 }
@@ -483,4 +508,10 @@ impl Display for IdentifierValidationError {
             .as_str(),
         )
     }
+}
+
+struct Disk {
+    path: PathBuf,
+    serial: String,
+    readonly: bool,
 }

@@ -20,7 +20,7 @@ fn net() -> Router {
 }
 
 async fn tap_create(Json(req): Json<NetTapCreateRequest>) -> impl IntoResponse {
-    let id: String = rand::thread_rng()
+    let id: String = rand::rng()
         .sample_iter(&Alphanumeric)
         .take(7)
         .map(char::from)
@@ -52,10 +52,10 @@ async fn tap_create(Json(req): Json<NetTapCreateRequest>) -> impl IntoResponse {
             if !out.status.success() {
                 return StatusCode::INTERNAL_SERVER_ERROR.into_response();
             }
-        },
+        }
         Err(_) => {
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-        },
+        }
     }
     match Command::new("ip")
         .args(["link", "set", name.as_str(), "up"])
@@ -65,10 +65,10 @@ async fn tap_create(Json(req): Json<NetTapCreateRequest>) -> impl IntoResponse {
             if !out.status.success() {
                 return StatusCode::INTERNAL_SERVER_ERROR.into_response();
             }
-        },
+        }
         Err(_) => {
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-        },
+        }
     }
 
     (StatusCode::CREATED, Json(NetTapCreateResponse { name })).into_response()
@@ -88,10 +88,10 @@ async fn tap_delete(Json(req): Json<NetTapDeleteRequest>) -> impl IntoResponse {
             if !out.status.success() {
                 return StatusCode::INTERNAL_SERVER_ERROR;
             }
-        },
+        }
         Err(_) => {
             return StatusCode::INTERNAL_SERVER_ERROR;
-        },
+        }
     }
 
     StatusCode::ACCEPTED

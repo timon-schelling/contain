@@ -52,7 +52,7 @@ impl Display for InodeFileHandles {
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(default)]
 pub struct Disk {
-    pub source: PathBuf,
+    pub source: Option<PathBuf>,
     pub tag: String,
     pub write: bool,
     pub create: bool,
@@ -63,7 +63,7 @@ pub struct Disk {
 impl Default for Disk {
     fn default() -> Self {
         Self {
-            source: PathBuf::default(),
+            source: None,
             tag: String::default(),
             write: true,
             create: true,
