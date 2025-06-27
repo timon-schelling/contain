@@ -6,24 +6,23 @@ rec {
     version = "0.1.0";
     src = ../..;
     useFetchCargoVendor = true;
-    cargoHash = "sha256-KmsY5lQMb+fickCRpJiZ+0cD+ln3cIEITm83iTaHczc=";
+    cargoHash = "sha256-X/dQVz6KbM/tvopvATODcIiCicW2GQPYFNn0C6JPM94=";
   };
   contain = (pkgs.runCommand "contain" {
     buildInputs = [ pkgs.makeWrapper ];
     meta.mainProgram = "contain";
   } ''
     makeWrapper ${contain-unwrapped}/bin/contain $out/bin/contain \
-      --set PATH ${pkgs.lib.makeBinPath ([ cloud-hypervisor-graphics virtiofsd crosvm-gpu-only ])}
+      --set PATH ${pkgs.lib.makeBinPath [ cloud-hypervisor-graphics crosvm-gpu-only pkgs.virtiofsd ]}
   '');
   containd = (pkgs.runCommand "containd" {
     buildInputs = [ pkgs.makeWrapper ];
     meta.mainProgram = "containd";
   } ''
     makeWrapper ${contain-unwrapped}/bin/containd $out/bin/containd \
-      --set PATH ${pkgs.lib.makeBinPath (with pkgs; [ iproute2 ])}
+      --set PATH ${pkgs.lib.makeBinPath [ pkgs.iproute2 ]}
   '');
 
   cloud-hypervisor-graphics = import ./cloud-hypervisor-graphics pkgs;
-  virtiofsd = import ./virtiofsd pkgs;
   crosvm-gpu-only = import ./crosvm-gpu-only pkgs;
 }
