@@ -6,7 +6,7 @@ rec {
     version = "0.1.0";
     src = ../..;
     useFetchCargoVendor = true;
-    cargoHash = "sha256-X/dQVz6KbM/tvopvATODcIiCicW2GQPYFNn0C6JPM94=";
+    cargoHash = "sha256-ab/tunTm+PY3qL4AQkmbr934Efk/CUq/1/q0ZLjOmF8=";
   };
   contain = (pkgs.runCommand "contain" {
     buildInputs = [ pkgs.makeWrapper ];

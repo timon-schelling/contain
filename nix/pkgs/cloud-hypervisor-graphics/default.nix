@@ -2,15 +2,15 @@ pkgs: pkgs.cloud-hypervisor.overrideAttrs (oldAttrs: rec {
   cargoDeps = pkgs.rustPlatform.fetchCargoVendor {
     inherit patches;
     inherit (oldAttrs) src;
-    hash = "sha256-5+YU4ywQbBKQ/G8b6raXx/xKVYQyoJRJbgk3WpIldsc=";
+    hash = "sha256-IlwX7n12Q3iRcH93oUbF13J0d9oO5OaH4E3MsPibiGo=";
   };
 
   vhost = pkgs.fetchFromGitHub {
     name = "vhost";
     owner = "rust-vmm";
     repo = "vhost";
-    rev = "d983ae07f78663b7d24059667376992460b571a2";
-    hash = "sha256-tSP8Ent7URu/6ehOOMP29ryLfV465ip2xrXkKu2nLYI=";
+    rev = "vhost-user-backend-v0.20.0";
+    hash = "sha256-KK1+mwYQr7YkyGT9+51v7TJael9D0lle2JXfRoTqYq8=";
   };
 
   patches = oldAttrs.patches or [] ++ [
