@@ -5,8 +5,7 @@ rec {
     pname = "contain-unwrapped";
     version = "0.1.0";
     src = ../..;
-    useFetchCargoVendor = true;
-    cargoHash = "sha256-ab/tunTm+PY3qL4AQkmbr934Efk/CUq/1/q0ZLjOmF8=";
+    cargoHash = "sha256-mUrG12+cnrdWnX2rJGGmmt/tjL1GT+g5s2izoKaPOEU=";
   };
   contain = (pkgs.runCommand "contain" {
     buildInputs = [ pkgs.makeWrapper ];
