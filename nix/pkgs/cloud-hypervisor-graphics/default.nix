@@ -1,4 +1,12 @@
-pkgs: pkgs.cloud-hypervisor.overrideAttrs (oldAttrs: rec {
+pkgs:
+
+let
+  patchesSrc = fetchTarball {
+    url = "https://spectrum-os.org/software/cloud-hypervisor/cloud-hypervisor-50.0-spectrum0-patches.tar.gz";
+    sha256 = "sha256:042g5607kv32bkmyc012i7mhywdmz14na5py41vc7ggd52902q20";
+  };
+in
+pkgs.cloud-hypervisor.overrideAttrs (oldAttrs: rec {
   cargoDeps = pkgs.rustPlatform.fetchCargoVendor {
     inherit patches;
     inherit (oldAttrs) src;
@@ -14,15 +22,7 @@ pkgs: pkgs.cloud-hypervisor.overrideAttrs (oldAttrs: rec {
   };
 
   patches = oldAttrs.patches or [] ++ [
-    ./0001-build-use-local-vhost.patch
-    ./0002-virtio-devices-add-a-GPU-device.patch
-  ];
-
-  vhostPatches = [
-    vhost/0001-vhost_user-add-get_size-to-MsgHeader.patch
-    vhost/0002-vhost-fix-receiving-reply-payloads.patch
-    vhost/0003-vhost_user-add-shared-memory-region-support.patch
-    vhost/0004-vhost_user-add-protocol-flag-for-shmem.patch
+    "${patchesSrc}/cloud-hypervisor.patch"
   ];
 
   postUnpack = oldAttrs.postUnpack or "" + ''
@@ -32,10 +32,7 @@ pkgs: pkgs.cloud-hypervisor.overrideAttrs (oldAttrs: rec {
 
   postPatch = oldAttrs.postPatch or "" + ''
     pushd ../vhost
-    for patch in $vhostPatches; do
-        echo applying patch $patch
-        patch -p1 < $patch
-    done
+    patch -p1 < ${patchesSrc}/vhost.patch
     popd
   '';
 })
