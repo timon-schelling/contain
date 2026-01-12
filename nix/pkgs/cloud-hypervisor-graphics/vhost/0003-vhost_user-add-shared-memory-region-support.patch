@@ -62,7 +62,7 @@ index 27e8e9a1f..b242a72c9 100644
 @@ -671,6 +671,10 @@ where
          Ok(())
      }
-
+ 
 +    fn get_shared_memory_regions(&mut self) -> VhostUserResult<Vec<VhostSharedMemoryRegion>> {
 +        Ok(Vec::new())
 +    }
@@ -77,11 +77,11 @@ index eb5ef65af..69665ce0e 100644
 @@ -49,12 +49,16 @@ impl BackendInternal {
          }
          self.sock.send_message(&hdr, body, fds)?;
-
+ 
 -        self.wait_for_ack(&hdr)
 +        self.wait_for_reply(&hdr)
      }
-
+ 
 -    fn wait_for_ack(&mut self, hdr: &VhostUserMsgHeader<BackendReq>) -> Result<u64> {
 +    fn wait_for_reply(&mut self, hdr: &VhostUserMsgHeader<BackendReq>) -> Result<u64> {
          self.check_state()?;
@@ -93,7 +93,7 @@ index eb5ef65af..69665ce0e 100644
 +        {
              return Ok(0);
          }
-
+ 
 @@ -183,6 +187,16 @@ impl VhostUserFrontendReqHandler for Backend {
              Some(&[fd.as_raw_fd()]),
          )
@@ -109,7 +109,7 @@ index eb5ef65af..69665ce0e 100644
 +        self.send_message(BackendReq::SHMEM_UNMAP, req, None)
 +    }
  }
-
+ 
  #[cfg(test)]
 diff --git a/vhost/src/vhost_user/backend_req_handler.rs b/vhost/src/vhost_user/backend_req_handler.rs
 index d74b04558..076b09362 100644
@@ -134,7 +134,7 @@ index d74b04558..076b09362 100644
 @@ -274,6 +276,10 @@ impl<T: VhostUserBackendReqHandlerMut> VhostUserBackendReqHandler for Mutex<T> {
          self.lock().unwrap().remove_mem_region(region)
      }
-
+ 
 +    fn get_shared_memory_regions(&self) -> Result<Vec<VhostSharedMemoryRegion>> {
 +        self.lock().unwrap().get_shared_memory_regions()
 +    }
@@ -165,7 +165,7 @@ index a45d3b47f..9b2040d6f 100644
 @@ -310,6 +310,10 @@ impl VhostUserBackendReqHandlerMut for DummyBackendReqHandler {
          Ok(())
      }
-
+ 
 +    fn get_shared_memory_regions(&mut self) -> Result<Vec<VhostSharedMemoryRegion>> {
 +        Ok(Vec::new())
 +    }
@@ -180,7 +180,7 @@ index 195a6af1e..41b49cbd3 100644
 @@ -79,6 +79,9 @@ pub trait VhostUserFrontend: VhostBackend {
      /// Remove a guest memory mapping from vhost.
      fn remove_mem_region(&mut self, region: &VhostUserMemoryRegionInfo) -> Result<()>;
-
+ 
 +    /// Gets the shared memory regions used by the device.
 +    fn get_shared_memory_regions(&self) -> Result<Vec<VhostSharedMemoryRegion>>;
 +
@@ -190,7 +190,7 @@ index 195a6af1e..41b49cbd3 100644
 @@ -567,6 +570,27 @@ impl VhostUserFrontend for Frontend {
          node.wait_for_ack(&hdr).map_err(|e| e.into())
      }
-
+ 
 +    fn get_shared_memory_regions(&self) -> Result<Vec<VhostSharedMemoryRegion>> {
 +        let mut node = self.node();
 +        let hdr = node.send_request_header(FrontendReq::GET_SHARED_MEMORY_REGIONS, None)?;
@@ -222,7 +222,7 @@ index 77d4bf55a..f26cd6491 100644
 @@ -52,6 +52,16 @@ pub trait VhostUserFrontendReqHandler {
          Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
      }
-
+ 
 +    /// Handle shared memory region mapping requests.
 +    fn shmem_map(&self, _req: &VhostUserShmemMapMsg, _fd: &dyn AsRawFd) -> HandlerResult<u64> {
 +        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
@@ -239,7 +239,7 @@ index 77d4bf55a..f26cd6491 100644
 @@ -84,6 +94,16 @@ pub trait VhostUserFrontendReqHandlerMut {
          Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
      }
-
+ 
 +    /// Handle shared memory region mapping requests.
 +    fn shmem_map(&mut self, _req: &VhostUserShmemMapMsg, _fd: &dyn AsRawFd) -> HandlerResult<u64> {
 +        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
@@ -266,7 +266,7 @@ index 77d4bf55a..f26cd6491 100644
 +        self.lock().unwrap().shmem_unmap(req)
 +    }
  }
-
+ 
  /// Server to handle service requests from backends from the backend communication channel.
 @@ -241,10 +269,23 @@ impl<S: VhostUserFrontendReqHandler> FrontendReqHandler<S> {
                      .shared_object_lookup(&msg, &files.unwrap()[0])
@@ -287,10 +287,10 @@ index 77d4bf55a..f26cd6491 100644
 +            }
              _ => Err(Error::InvalidMessage),
          };
-
+ 
 -        self.send_ack_message(&hdr, &res)?;
 +        self.send_reply(&hdr, &res)?;
-
+ 
          res
      }
 @@ -278,7 +319,7 @@ impl<S: VhostUserFrontendReqHandler> FrontendReqHandler<S> {
@@ -305,7 +305,7 @@ index 77d4bf55a..f26cd6491 100644
 @@ -320,12 +361,16 @@ impl<S: VhostUserFrontendReqHandler> FrontendReqHandler<S> {
          ))
      }
-
+ 
 -    fn send_ack_message(
 +    fn send_reply(
          &mut self,
@@ -333,7 +333,7 @@ index 8359eb1fd..b847885a4 100644
 +        GET_SHARED_MEMORY_REGIONS = 1004,
      }
  }
-
+ 
 @@ -197,6 +199,12 @@ enum_value! {
          SHARED_OBJECT_REMOVE = 7,
          /// Lookup for a virtio shared object.
@@ -346,11 +346,11 @@ index 8359eb1fd..b847885a4 100644
 +        SHMEM_UNMAP = 1001,
      }
  }
-
+ 
 @@ -992,6 +1000,99 @@ impl VhostUserMsgValidator for VhostUserTransferDeviceState {
      }
  }
-
+ 
 +bitflags! {
 +    #[derive(Default, Copy, Clone)]
 +    /// Flags for SHMEM_MAP messages.
@@ -450,7 +450,7 @@ index 8359eb1fd..b847885a4 100644
 @@ -1123,6 +1224,31 @@ impl QueueRegionPacked {
      }
  }
-
+ 
 +/// Virtio shared memory descriptor.
 +#[repr(C, packed)]
 +#[derive(Default, Copy, Clone)]
@@ -479,5 +479,6 @@ index 8359eb1fd..b847885a4 100644
  #[cfg(test)]
  mod tests {
      use super::*;
---
+-- 
 2.50.0
+

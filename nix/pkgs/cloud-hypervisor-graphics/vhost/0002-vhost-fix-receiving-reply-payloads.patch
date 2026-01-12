@@ -77,12 +77,12 @@ index 4fca9c5bc..0ce72154e 100644
 +        } else if !body.is_valid() || more_files.is_some() {
              return Err(Error::InvalidMessage);
          }
-
+ 
 -        Ok((hdr, body, bytes - total, files))
 +        Ok((hdr, body, buf, files))
      }
  }
-
+ 
 diff --git a/vhost/src/vhost_user/frontend.rs b/vhost/src/vhost_user/frontend.rs
 index ea6284980..195a6af1e 100644
 --- a/vhost/src/vhost_user/frontend.rs
@@ -100,7 +100,7 @@ index ea6284980..195a6af1e 100644
              return Err(VhostUserError::InvalidParam);
          }
          self.check_state()?;
-
+ 
 -        let mut buf: Vec<u8> = vec![0; hdr.get_size() as usize - mem::size_of::<T>()];
 -        let (reply, body, bytes, files) = self.main_sock.recv_payload_into_buf::<T>(&mut buf)?;
 -        if !reply.is_reply_for(hdr)
@@ -113,7 +113,7 @@ index ea6284980..195a6af1e 100644
 +        if !reply.is_reply_for(hdr) || files.is_some() || !body.is_valid() {
              return Err(VhostUserError::InvalidMessage);
          }
-
+ 
 diff --git a/vhost/src/vhost_user/gpu_backend_req.rs b/vhost/src/vhost_user/gpu_backend_req.rs
 index 140063093..f7160c9c4 100644
 --- a/vhost/src/vhost_user/gpu_backend_req.rs
@@ -121,7 +121,7 @@ index 140063093..f7160c9c4 100644
 @@ -437,9 +437,8 @@ mod tests {
              let _: () = backend.update_scanout(&request, &payload).unwrap();
          });
-
+ 
 -        let mut recv_buf = [0u8; 4096];
 -        let (hdr, req_body, recv_buf_len, fds) = frontend
 -            .recv_payload_into_buf::<VhostUserGpuUpdate>(&mut recv_buf)
@@ -133,16 +133,16 @@ index 140063093..f7160c9c4 100644
 @@ -449,7 +448,7 @@ mod tests {
          );
          assert_eq!(req_body, request);
-
+ 
 -        assert_eq!(&payload[..], &recv_buf[..recv_buf_len]);
 +        assert_eq!(&payload[..], recv_buf);
-
+ 
          sender_thread.join().expect("Failed to send!");
      }
 @@ -611,9 +610,8 @@ mod tests {
              let _: () = backend.cursor_update(&request, &payload).unwrap();
          });
-
+ 
 -        let mut recv_buf = vec![0u8; 1 + size_of_val(&payload)];
 -        let (hdr, req_body, recv_buf_len, fds) = frontend
 -            .recv_payload_into_buf::<VhostUserGpuCursorUpdate>(&mut recv_buf)
@@ -154,11 +154,12 @@ index 140063093..f7160c9c4 100644
 @@ -623,7 +621,7 @@ mod tests {
          );
          assert_eq!(req_body, request);
-
+ 
 -        assert_eq!(&payload[..], &recv_buf[..recv_buf_len]);
 +        assert_eq!(&payload[..], recv_buf);
-
+ 
          sender_thread.join().expect("Failed to send!");
      }
---
+-- 
 2.50.0
+

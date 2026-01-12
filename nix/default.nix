@@ -11,4 +11,6 @@ in
   packages = forAllSystems (pkgs: import ./pkgs (args // { inherit pkgs; }));
 
   nixosModules = import ./modules args;
+
+  nixosConfigurations.dev = import ./dev (args // { lib = nixpkgs.lib; });
 }
