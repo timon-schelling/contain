@@ -1,6 +1,7 @@
 { pkgs, ... }:
 
 rec {
+  default = contain;
   contain-unwrapped = pkgs.rustPlatform.buildRustPackage {
     pname = "contain-unwrapped";
     version = "0.1.0";

@@ -6,11 +6,11 @@ let
     sha256 = "sha256:042g5607kv32bkmyc012i7mhywdmz14na5py41vc7ggd52902q20";
   };
 in
-pkgs.cloud-hypervisor.overrideAttrs (oldAttrs: rec {
+pkgs.cloud-hypervisor.overrideAttrs (finalAttrs: oldAttrs: {
   cargoDeps = pkgs.rustPlatform.fetchCargoVendor {
-    inherit patches;
-    inherit (oldAttrs) src;
-    hash = "sha256-wGtsyKDg1z1QK9mJ1Q43NSjoPbm3m81p++DoD8ipIUI=";
+    inherit (finalAttrs) patches;
+    inherit (finalAttrs) src;
+    hash = "sha256-FEdBWrE8ANIM1ilgtBBQUpJpEvItvIXf5m80XQaCV5U=";
   };
 
   vhost = pkgs.fetchFromGitHub {

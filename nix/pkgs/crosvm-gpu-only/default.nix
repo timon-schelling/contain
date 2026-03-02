@@ -1,4 +1,4 @@
-pkgs: pkgs.crosvm.overrideAttrs (oldAttrs: {
+pkgs: (pkgs.callPackage ./package.nix {}).overrideAttrs (oldAttrs: {
   patches = [
     ./disable-fbdev-support.patch
   ] ++ oldAttrs.patches;
