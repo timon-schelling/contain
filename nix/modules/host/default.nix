@@ -19,7 +19,7 @@ in
   config = lib.mkMerge [
     (lib.mkIf (cfg.enable) {
       environment.systemPackages = [
-        self.packages.${pkgs.system}.contain
+        self.packages.${pkgs.stdenv.hostPlatform.system}.contain
       ];
       systemd.services."containd" = {
         enable = true;
@@ -27,7 +27,7 @@ in
         wantedBy = [ "multi-user.target" ];
         serviceConfig = {
           Type = "simple";
-          ExecStart = "${lib.getExe self.packages.${pkgs.system}.containd}";
+          ExecStart = "${lib.getExe self.packages.${pkgs.stdenv.hostPlatform.system}.containd}";
           Restart = "always";
         };
       };
