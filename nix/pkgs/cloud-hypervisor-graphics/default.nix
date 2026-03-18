@@ -7,10 +7,21 @@ let
   };
 in
 pkgs.cloud-hypervisor.overrideAttrs (finalAttrs: oldAttrs: {
+  version = "50.0";
+
+  src = pkgs.fetchFromGitHub {
+    owner = "cloud-hypervisor";
+    repo = "cloud-hypervisor";
+    rev = "v${finalAttrs.version}";
+    hash = "sha256-U2jNKdc+CWB/Z9TvAC0xfHDipfe4dhWjL9VXbBVaNJE=";
+  };
+
+  cargoHash = "sha256-M1jVvFo9Bo/ZFqaFtzwp2rusl1T1m7jAkEobOF0cnlA=";
+
   cargoDeps = pkgs.rustPlatform.fetchCargoVendor {
     inherit (finalAttrs) patches;
     inherit (finalAttrs) src;
-    hash = "sha256-FEdBWrE8ANIM1ilgtBBQUpJpEvItvIXf5m80XQaCV5U=";
+    hash = "sha256-wGtsyKDg1z1QK9mJ1Q43NSjoPbm3m81p++DoD8ipIUI=";
   };
 
   vhost = pkgs.fetchFromGitHub {
