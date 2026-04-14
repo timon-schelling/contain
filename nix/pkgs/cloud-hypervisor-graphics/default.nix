@@ -6,18 +6,7 @@ let
     sha256 = "sha256:042g5607kv32bkmyc012i7mhywdmz14na5py41vc7ggd52902q20";
   };
 in
-pkgs.cloud-hypervisor.overrideAttrs (finalAttrs: oldAttrs: {
-  version = "50.0";
-
-  src = pkgs.fetchFromGitHub {
-    owner = "cloud-hypervisor";
-    repo = "cloud-hypervisor";
-    rev = "v${finalAttrs.version}";
-    hash = "sha256-U2jNKdc+CWB/Z9TvAC0xfHDipfe4dhWjL9VXbBVaNJE=";
-  };
-
-  cargoHash = "sha256-M1jVvFo9Bo/ZFqaFtzwp2rusl1T1m7jAkEobOF0cnlA=";
-
+(pkgs.callPackage ./package.nix {}).overrideAttrs (finalAttrs: oldAttrs: {
   cargoDeps = pkgs.rustPlatform.fetchCargoVendor {
     inherit (finalAttrs) patches;
     inherit (finalAttrs) src;
