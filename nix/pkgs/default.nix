@@ -13,7 +13,8 @@ rec {
     meta.mainProgram = "contain";
   } ''
     makeWrapper ${contain-unwrapped}/bin/contain $out/bin/contain \
-      --set PATH ${pkgs.lib.makeBinPath [ cloud-hypervisor-graphics crosvm-gpu-only pkgs.virtiofsd ]}
+      --set PATH ${pkgs.lib.makeBinPath [ cloud-hypervisor-graphics crosvm-gpu-only pkgs.virtiofsd pkgs.virglrenderer ]} \
+      --set LD_LIBRARY_PATH ${pkgs.lib.makeLibraryPath [ pkgs.vulkan-loader ]}
   '');
   containd = (pkgs.runCommand "containd" {
     buildInputs = [ pkgs.makeWrapper ];
@@ -25,4 +26,5 @@ rec {
 
   cloud-hypervisor-graphics = import ./cloud-hypervisor-graphics pkgs;
   crosvm-gpu-only = import ./crosvm-gpu-only pkgs;
+  wayland-proxy-virtwl = import ./wayland-proxy-virtwl pkgs;
 }

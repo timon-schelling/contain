@@ -233,10 +233,11 @@ pub async fn run_vm(config: Config) -> Result<(), VmError> {
         let wayland_socket = wayland_socket_path.as_os_str().to_string_lossy();
 
         let device_params_json = json!({
-            "context-types": "virgl:virgl2:cross-domain",
-            "displays": [{ "hidden":true }],
+            "context-types": "virgl:virgl2:venus:cross-domain",
+            "displays": [{ "hidden": true }],
             "egl": true,
             "vulkan": true,
+            "implicit-render-server": true,
         });
         let device_params = serde_json::to_string(&device_params_json).expect("this is valid json");
 
